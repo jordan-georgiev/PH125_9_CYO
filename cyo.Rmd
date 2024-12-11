@@ -1,0 +1,577 @@
+---
+title: "CYO Project Submission for HarvardX PH125.9x - League of Legends Wins Prediction"
+author: "Jordan Georgiev"
+date: "2024-12-08"
+output:
+  pdf_document:
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+The CYO (Choose Your Own) project is part of the HarvardX PH125.9x Capstone course. For this project, we need to apply the knowledge gained in all previous course and use machine learning techniques that go beyond standard linear regression to analyze and predict variables from a publicly available dataset.
+
+When researching publicly available datasets, I was looking for something not as big as the Movielens 10M dataset we used in the previous Movielens project in order to be able to test more demanding algorithms. Being a gamer myself I stumbled upon the ["League of Legends Diamond Ranked Games (10 min)"](https://www.key2stats.com/data-set/view/1596) available in the [Key2Stats](https://www.key2stats.com/) Learning platform. Since League Of Legends is a very popular game I also used to play, I was intrigued and wanted to give it a try. The dataset had around 10,000 rows and 40 variables, so it seemed as a good fit for a challenging project.
+
+## League of Legends
+
+League of Legends is a very popular MOBA (multiplayer online battle arena) game where 2 teams (blue and red) face each other in combat. There are 3 lanes, a jungle, and 5 champions (roles). The goal is to destroy the enemy Nexus located in the opposing team's base to win the game. Very popular map used also in rated tournaments is Summoner's Rift. A simplified representation of Summoner's Rift. It is a square map separated by a diagonal line called "the river".
+
+### Game Mechanics {.unnumbered}
+
+The Nexus "is guarded by the enemy champions and defensive structures known as "turrets". Each team's Nexus is located in their base, where players start the game and reappear after death. Non-player characters (NPC) known as minions are generated from each team's Nexus and advance towards the enemy base along three lanes guarded by turrets: top, middle, and bottom.
+
+Each team's base contains three "inhibitors", one behind the third tower from the center of each lane. Destroying one of the enemy team's inhibitors causes stronger allied minions to spawn in that lane, and allows the attacking team to damage the enemy Nexus and the two turrets guarding it.
+
+The regions in between the lanes are collectively known as the "jungle", which is inhabited by "monsters" that, like minions, respawn at regular intervals. Like minions, monsters provide gold and XP when killed. Another, more powerful class of monster resides within the river that separates each team's jungle. These monsters require multiple players to defeat and grant special abilities to their slayers' team. For example, teams can gain a powerful allied unit after killing the Rift Herald, permanent strength boosts by killing dragons, and stronger, more durable minions by killing Baron Nashor."[^1]
+
+[^1]: <https://en.wikipedia.org/wiki/League_of_Legends>
+
+### Variables {.unnumbered}
+
+This dataset contains the first 10min. stats of approx. 10k ranked games (solo queue) from a high ELO (Diamond I to Master ). Players have roughly the same level. Each game is unique.[\^2]
+
+There are 19 features per team (38 in total) collected after 10min in-game. This includes kills, deaths, gold, experience, level… The features are using the same names for both teams (19 features per team) and are prefixed with "red" and "blue" accordingly.
+
+The column ***blueWins*** is the target value we will be trying to predict. A value of 1 means the blue team has won, 0 means a lost (red team won).
+
+### Glossary {.unnumbered}
+
+Some game specific terminology needs explanation in order to understand the game mechanics and also explain the names of several features in the dataset.
+
+***Warding totem:*** An item that a player can put on the map to reveal the nearby area. Very useful for map/objectives control.
+
+***Minions:*** NPC that belong to both teams. They give gold when killed by players.
+
+***Jungle minions:*** NPC that belong to NO TEAM. They give gold and buffs when killed by players.
+
+***Elite monsters:*** Monsters with high hp/damage that give a massive bonus (gold/XP/stats) when killed by a team.
+
+***Dragons:*** Elite monster which gives team bonus when killed. The 4th dragon killed by a team gives a massive stats bonus. The 5th dragon (Elder Dragon) offers a huge advantage to the team.
+
+***Herald:*** Elite monster which gives stats bonus when killed by the player. It helps to push a lane and destroys structures.
+
+***Towers:*** Structures you have to destroy to reach the enemy Nexus. They give gold.
+
+***Level:*** Champion level. Start at 1. Max is 18.
+
+# Project goal and evaluation
+
+Our goal is to develop and train a machine learning model capable of ***predicting the wins for the blue team*** which are stored in the column ***blueWins*** of the dataset. The model will be trained on the dataset which contains the first 10 min of around 10,000 games played by elite players. We will evaluate 39 features and although the typical League of Legends game can last somewhere between 20 minutes to several hours, the first 10 minutes should give us enough insight on the winning strategy of players in the early phase of the game. The performance of the models chosen to be trained will be evaluated on their accuracy, sensitivity, specificity and precision. The best scoring model will be fine-tuned further in order to increase its accuracy.
+
+## Approach
+
+The following steps will be followed and documented during the CYO project to ensure our models works.
+
+1.  **Setup and data loading**: load and prepare the dataset provided, clean and preprocess the data to handle missing values.
+2.  **Exploratory data analysis**: Analyse and visualize the downloaded dataset to understand the features and predictors.
+3.  **Data preparation**: Split data into training and test sets, adjust data if necessary.
+4.  **Model creation and evaluation**: create and validate the model.
+5.  **Model fine-tuning**: Fine-tune the model to increase performance and accuracy.
+6.  **Reporting**: document the analysis and the model and create the final report.
+
+# Setup and data loading
+
+First we download the necessary packages (if not installed allready), load the libraries. We download the dataset and store it in a dataframe called ***game_data***. Let us inspect the data.
+
+```{r block1, include=FALSE}
+##########################################################
+# 1. Setup  and data loading
+##########################################################
+# Install additional packages
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+if(!require(ggthemes)) install.packages("ggthemes", repos = "http://cran.us.r-project.org")
+if(!require(glmnet)) install.packages("glmnet", repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("kableExtra", repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("knitr", repos = "http://cran.us.r-project.org")
+if(!require(psych)) install.packages("psych", repos = "http://cran.us.r-project.org")
+if(!require(scales)) install.packages("scales", repos = "http://cran.us.r-project.org")
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+
+library(caret)
+library(gridExtra)
+library(ggplot2)
+library(ggthemes)
+library(glmnet)
+library(kableExtra)
+library(knitr)
+library(psych)
+library(ROCR)
+library(scales)
+library(tidyverse)
+
+# League of Legends (LoL) Diamond Ranked Games (10 min) dataset:
+# https://www.key2stats.com/League_of_Legends_Diamond_Ranked_Games__10_min__1596_1.csv
+
+# Suppress scientific notations of numbers
+options(scipen=999)
+
+# Read the LoL datasetet
+game_data <- read.csv("https://www.key2stats.com/League_of_Legends_Diamond_Ranked_Games__10_min__1596_1.csv")
+```
+
+```{r block2, echo=FALSE}
+# Inspect the data
+t(head(game_data, 3))
+```
+
+Column X contains just the row numbers of the dataset. The column gameId will not be needed, as it is unique. We can remove them from our dataset.
+
+```{r block3, echo=TRUE}
+# Remove columns "X" and "gameId" from the data frame
+game_data <- game_data[ , !(names(game_data) %in% c("X", "gameId"))]
+```
+
+```{r block4, echo=FALSE}
+# Summary statistics
+tab1 <- kable(describe(game_data)[, c(3:4, 8:10, 13)], booktabs = TRUE, escape = FALSE, caption = "Dataset summary") %>%
+  kable_styling(position = "center", latex_options = c("striped"))
+tab1
+```
+
+Let us check for missing values to tidy data if necessary.
+
+```{r block5, echo=TRUE}
+# Check for missing values to tidy data if necessary
+if (anyNA(game_data)) {
+  colSums(is.na(game_data))
+} else {
+  print("No NA values found in game_data.")
+}
+```
+
+When analyzing the dataset we found some columns which are interconnected - all the columns ending in "Diff".
+
+```{r block6, echo=FALSE}
+# Some columns come in pairs, inspect them
+paired_cols <- game_data[, grepl("Diff$", names(game_data))]
+tab2 <- kable(head(paired_cols, 5), booktabs = TRUE, escape = FALSE, caption = "Paired columns") %>%
+  kable_styling(position = "center", latex_options = c("striped"))
+tab2
+```
+
+We also check for mirrored columns - same values in blue and red columns. The kills of blue count for deaths for red and vice versa.
+
+```{r block7, echo=FALSE}
+# Check for connected columns - same values in blue and red columns
+connected_cols <- head(game_data[ , c("blueKills", "redDeaths", "redKills", "blueDeaths")], 5)
+tab3 <- kable(connected_cols, booktabs = TRUE, escape = FALSE, caption = "Mirrored columns") %>%
+  kable_styling(position = "center", latex_options = c("striped"))
+tab3
+```
+
+Other columns are mutually exclusive: 1 in one column leads to 0 in other. The reason is, e.g. there can be only one dragon in the game, so the first team to summon one gets 1. Both can be 0 though if no team summoned a dragon.
+
+```{r block8, echo=FALSE}
+mut_excl_cols <- head(game_data[ , c("blueFirstBlood", "redFirstBlood", "blueDragons", "redDragons", "blueHeralds", "redHeralds")])
+tab4 <- kable(mut_excl_cols, booktabs = TRUE, escape = FALSE, caption = "Mutually exclusive columns") %>%
+  kable_styling(position = "center", latex_options = c("striped"))
+tab4
+```
+
+The data seems tidy now, so we can continue to the exploratory data analysis (EDA).
+
+# Exploratory data analysis
+
+The win to loss ratio of the dataset is very well balanced.
+
+```{r block9, echo=FALSE}
+# Win ratio from blueWins column
+win_loss_table <- table(game_data$blueWins)
+percentages <- round(win_loss_table / sum(win_loss_table) * 100, 1)
+pie(win_loss_table, 
+    labels = paste(c("Loss", "Win"), "(", percentages, "%)"),
+    col = c("indianred1", "lightblue"),
+    main = "Blue Wins vs Losses")
+```
+
+Now we are looking into correlations between variables/features. We remove self correlations - a variable correlating with itself (which usually results to cor = 1). We now examine how all "blue\*" variables correlate to "red" variables and filter the ones with correlation coefficient \> 0.4.
+
+```{r block10, echo=FALSE}
+
+# Correlations between variables
+# Calculate a correlation matrix
+correlation_matrix <- cor(game_data)
+
+# Convert the correlation matrix to a tidy format
+correlation_df <- as.data.frame(correlation_matrix) %>%
+  rownames_to_column("Var1") %>%
+  pivot_longer(cols = -Var1, names_to = "Var2", values_to = "Corr")
+
+# Remove self-correlations where Var1 == Var2
+correlation_df <- correlation_df %>%
+  filter(Var1 != Var2)
+
+# Check how blue vars correlate to red vars and > 0.4
+blue_red_abs_05 <- correlation_df %>%
+  filter(str_starts(Var1, "blue") & str_starts(Var2, "red") & abs(Corr) > 0.5 & abs(Corr) < 1) %>%
+  arrange(desc(Corr))
+
+tab5 <- kable(head(blue_red_abs_05, 37), booktabs = TRUE, escape = FALSE, caption = "Blue vs Red variables, corr > 0.5") %>%
+  kable_styling(position = "center", latex_options = c("striped"))
+tab5
+```
+
+It is also interesting to investigate which "blue" variables correlate positively to "redDeaths".
+
+```{r block11, echo=FALSE, fig.dim = c(8, 6), fig.align = 'center'}
+# Check how blueVars corr with redDeaths var
+blue_redDeaths <- correlation_df %>%
+  filter(str_starts(Var1, "blue") & str_starts(Var2, "redDeaths") & Corr > 0.2) %>%
+  arrange(desc(Corr))
+tab6 <- kable(head(blue_redDeaths, 10), booktabs = TRUE, escape = FALSE, caption = "Blue variables vs redDeaths") %>%
+  kable_styling(position = "center", latex_options = c("striped"))
+tab6
+
+# Convert the correlation_df back to wide format for heatmap
+correlation_wide <- correlation_df %>%
+  pivot_wider(names_from = Var2, values_from = Corr)
+```
+
+We can see the high correlations of variables to each other (except for "blueWins") in the following heatmap.
+
+```{r block12, echo=FALSE, fig.dim = c(10, 10), fig.align = 'center'}
+# Create the heatmap
+ggplot(correlation_df, aes(x = Var1, y = Var2, fill = Corr)) +
+  geom_tile() +
+  scale_fill_gradient2(midpoint = 0, low = "red", high = "blue", mid = "white") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(title = "Correlation Heatmap (all variables)", x = "", y = "") +
+  theme(axis.text.x = element_text(size = 5, angle = 45, hjust = 1)) +
+  theme(axis.text.y = element_text(size = 5))
+```
+
+Since kills earn gold and experience, it is obvious, that deaths on the red side have a very high correlation to "gold" and "experience" variables on the blue side. Also the "blueFirstBlood" - the first blue kill in the game is correlated to "redDeaths".
+
+Now let us correlate all columns (except "blueWins") to "blueWins".
+
+```{r block13, echo=FALSE}
+# Calculate correlations of all columns to blueWins
+correlations <- sapply(game_data %>% select(-blueWins), function(col) cor(game_data$blueWins, col))
+
+# Create a data frame for the correlations
+correlations_df <- data.frame(Variable = names(correlations), Correlation = correlations)
+
+# Create a bar plot
+ggplot(correlations_df, aes(x = reorder(Variable, Correlation), y = Correlation)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  coord_flip() + # Flip the coordinates for a horizontal bar plot
+  theme_minimal() +
+  labs(title = "Correlation of Variables with blueWins",
+       x = "",
+       y = "Correlation") +
+  theme(axis.text.y = element_text(size = 7))
+```
+
+Now we examine how the "blue variables", which correlate high to "redDeaths", correlate with "blueWins".
+
+```{r block14, echo=FALSE, fig.dim = c(10, 6), fig.align = 'center'}
+# Extract only the necessary columns from game_data
+subset_data <- game_data %>% select(all_of(c("blueWins", blue_redDeaths$Var1)))
+
+# Calculate the correlation matrix
+correlation_matrix <- cor(subset_data)
+
+# Convert the correlation matrix into a tidy format
+correlation_df <- as.data.frame(correlation_matrix) %>%
+  rownames_to_column("Var1") %>%
+  pivot_longer(cols = -Var1, names_to = "Var2", values_to = "Corr")
+
+# Create the heatmap
+ggplot(correlation_df, aes(x = Var1, y = Var2, fill = Corr)) +
+  geom_tile() +
+  scale_fill_gradient2(midpoint = 0, low = "red", high = "blue", mid = "white") +
+  geom_text(aes(label = round(Corr, 3)), color = "black", size = 3) +
+  theme_minimal() +
+  labs(title = "Correlation Heatmap (with blueWins)", x = "", y = "") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Data preparation
+
+Here we prepare our dataset for modelling by splitting it into a test_set (10%) and a train_set (90%). We compare the number of rows and columns in each set. We also check the means of "blueWins" in both newly created sets to be sure that the data is well distributed.
+
+Finally, we convert the column "blueWins" in both sets from integer to factor and we are ready to train our models.
+
+```{r block15, echo=TRUE}
+# Partition the data to create test (10%) and training sets (90%)
+set.seed(9, sample.kind="Rounding")
+
+# Col blueWin is the one we will predict - partition the data (test_set 10% of game_data)
+test_index <- createDataPartition(y = game_data$blueWins, times = 1, p = 0.1, list = FALSE)
+train_set <- game_data[-test_index,]
+test_set <- game_data[test_index,]
+rm(test_index)
+
+# Create an overview table with row and column count
+dataset_overview <- data.frame(
+  Dataset = c("train_set", "test_set"),
+  Rows = c(nrow(train_set), nrow(test_set)),
+  Columns = c(ncol(train_set), ncol(test_set))
+)
+tab1 <- kable(dataset_overview, booktabs = TRUE, escape = FALSE) %>%
+  kable_styling(position = "center", latex_options = c("striped"))
+tab1
+
+# Mean of blueWins
+mean(train_set$blueWins)
+mean(test_set$blueWins)
+
+# Convert blueWins to a factor
+train_set$blueWins <- as.factor(train_set$blueWins)
+test_set$blueWins <- as.factor(test_set$blueWins)
+```
+
+# Model development
+
+We will use four different methods to train our model - Logisic regression, Decision Trees, Random Forest and kNN. We utilize the R caret package and its train() function to train each model using k-fold cross-validation (trControl = trainControl(method = "cv", number = 5)). This helps to estimate the model's performance more robustly by evaluating it on different subsets of the training data.
+
+A short overview of each model, its pros and cons (see Irizzary, 2019.[^2]):
+
+[^2]: <https://rafalab.dfci.harvard.edu/dsbook-part-2/highdim/regularization.html>
+
+## Logistic Regression {-}
+
+Logistic regression is a statistical method used to model the probability of an event occurring (in this case, the "blueWins" outcome) based on one or more predictor variables. It uses a sigmoid function to map the linear combination of predictors to a probability between 0 and 1. Mathematical Representation:
+
+$$P(Y = 1 \mid X) = \frac{1}{1 + exp(-(\beta_{0} + \beta_{1}X_{1} + ... + \beta_{p}X_{p}))}$$
+
+$$P(Y=1 \mid X)$$ is the probability of the event occurring (blue team winning) given the predictor variables.
+
+$$X_1,...,X_p$$ are the predictor variables (e.g., blueKills, blueAssists, blueGoldDiff).
+
+$$\beta_0,\beta_1,...,\beta_p$$
+
+are the model coefficients.
+
+#### Pros {-}
+
+Simple and interpretable. Provides probabilities for the outcome. Relatively fast to train.
+
+#### Cons {-}
+
+Assumes a linear relationship between the log-odds of the outcome and the predictors. Can be sensitive to outliers and may not perform well with highly non-linear relationships.
+
+### Decision Tree {-}
+
+Decision trees create a tree-like model where each node represents a decision based on the value of a particular feature. They recursively partition the data into smaller subsets based on the chosen features, aiming to create homogeneous subsets within each leaf node. The process continues recursively until a stopping criterion is met (e.g., maximum depth, minimum number of samples in a node). In essence, the decision tree model is represented by a series of if-else conditions.
+
+#### Pros {-}
+
+-   Easy to understand and visualize.
+-   Can handle both categorical and numerical features.
+-   Can capture non-linear relationships in the data.
+
+#### Cons {-}
+
+-   Prone to overfitting, especially with deep trees.
+-   Can be unstable, with small changes in the data leading to significant changes in the tree structure.
+
+### Random Forest {-}
+
+Random Forest is an ensemble learning method that constructs multiple decision trees on different subsets of the data and then aggregates their predictions. It introduces randomness by selecting random subsets of features at each node during tree construction, reducing correlation between trees. Each tree is built on a bootstrap sample of the training data (Bagging, Bootstrap Aggregation), meaning a random sample of the data with replacement. This introduces diversity among the trees. At each node of each tree, only a random subset of features is considered for splitting, further increasing diversity (Feature Randomness). For regression, the average of the predictions from all trees is used.
+
+#### Pros {-}
+
+-   High accuracy and robustness to overfitting.
+-   Handles high-dimensional data well.
+-   Can handle both categorical and numerical features.
+#### Cons {-}
+
+-   Can be computationally expensive to train, especially with large datasets and many trees.
+-   Less interpretable than individual decision trees.
+
+### K-Nearest Neighbors (kNN) {-}
+
+kNN is a non-parametric, instance-based learning algorithm. It classifies a new data point based on the majority class of its k-nearest neighbors in the training data. The distance between data points is typically calculated using metrics like Euclidean distance or Manhattan distance.[^3]
+
+[^3]: <https://www.datacamp.com/tutorial/k-nearest-neighbor-classification-scikit-learn>
+
+#### Pros {-}
+
+-   Simple and easy to implement.
+-   No explicit training phase required.
+-   Can capture complex non-linear relationships.
+
+#### Cons {-}
+
+-   Can be computationally expensive for large datasets.
+-   Sensitive to the choice of the 'k' parameter and the distance metric.
+-   Can be sensitive to noisy data and the curse of dimensionality.
+
+```{r block16, echo=TRUE}
+# Set a seed for reproducibility
+set.seed(123)
+
+# Define a formula for the model
+formula <- blueWins ~ .
+
+# Logistic Regression
+logistic_model <- train(
+  blueWins ~ ., data = train_set,
+  method = "glm",
+  family = "binomial",
+  trControl = trainControl(method = "cv", number = 5)
+)
+
+# Decision Tree
+decision_tree_model <- train(
+  blueWins ~ ., data = train_set,
+  method = "rpart",
+  trControl = trainControl(method = "cv", number = 5)
+)
+
+# Random Forest
+random_forest_model <- train(
+  blueWins ~ ., data = train_set,
+  method = "rf",
+  trControl = trainControl(method = "cv", number = 5)
+)
+
+# K-Nearest Neighbors (KNN)
+knn_model <- train(
+  blueWins ~ ., data = train_set,
+  method = "knn",
+  trControl = trainControl(method = "cv", number = 5)
+)
+```
+
+```{r block17, echo=FALSE}
+print(max(knn_model$results["Accuracy"]))
+
+# Collecting performance metrics for all models
+model_results <- data.frame(Model = character(),
+                            Accuracy = numeric(),
+                            Sensitivity = numeric(),
+                            Specificity = numeric(),
+                            Precision = numeric(),
+                            F1 = numeric(),
+                            stringsAsFactors = FALSE)
+
+# List of models to evaluate
+models <- list(
+  Logistic = logistic_model,
+  DecisionTree = decision_tree_model,
+  RandomForest = random_forest_model,
+  KNN = knn_model
+)
+
+# Extract confusion matrix results for each model
+for (model_name in names(models)) {
+  model <- models[[model_name]]
+  preds <- predict(model, test_set)
+  cm <- confusionMatrix(preds, test_set$blueWins)
+  
+  # Extract relevant metrics
+  accuracy <- cm$overall["Accuracy"]
+  sensitivity <- cm$byClass["Sensitivity"]
+  specificity <- cm$byClass["Specificity"]
+  precision <- cm$byClass["Precision"]
+  f1 <- cm$byClass["F1"]
+  
+  # Add to results table
+  model_results <- rbind(model_results, data.frame(
+    Model = model_name,
+    Accuracy = accuracy,
+    Sensitivity = sensitivity,
+    Specificity = specificity,
+    Precision = precision,
+    F1 = f1
+  ))
+}
+```
+
+Here are the results of our model fitting. The highest accuracy is achieved through Logistic Regression
+
+```{r block18, echo=TRUE}
+# Print the results table
+tab7 <- kable(model_results, booktabs = TRUE, escape = FALSE, caption = "Model results") %>%
+  kable_styling(position = "center", latex_options = c("striped"))
+tab7
+```
+
+The Logistic Regression model shows the highest Accuracy (0.7439271), Specificity (0.7469636) and Precision (0.7454175) values of all models. We will try to tune the model parameters in our next steps with the goal to increase its accuracy further.
+
+# Model fine tuning
+
+In our last step we can use hyperparameter tuning using the R glmnet package. We will add alpha (elastic net mixing parameter) and lambda (regularization parameter) to the tuneGrid variable of our model (see parameter values in the code).
+
+```{r block19, echo=TRUE}
+# Fine-tuning Logistic Regression using glmnet
+logistic_tune_grid <- expand.grid(
+  alpha = c(0, 0.5, 1),
+  lambda = seq(0.001, 0.1, length = 10)
+)
+
+logistic_model_tuned <- train(
+  blueWins ~ ., data = train_set,
+  method = "glmnet",
+  trControl = trainControl(method = "cv", number = 5),
+  tuneGrid = logistic_tune_grid
+)
+
+# Predict, create a confusion matrix and extract metrics
+model <- logistic_model_tuned
+preds <- predict(logistic_model_tuned, test_set)
+cm <- confusionMatrix(preds, test_set$blueWins)
+
+# Extract relevant metrics
+accuracy <- cm$overall["Accuracy"]
+sensitivity <- cm$byClass["Sensitivity"]
+specificity <- cm$byClass["Specificity"]
+precision <- cm$byClass["Precision"]
+f1 <- cm$byClass["F1"]
+
+# Add to results table
+model_results <- rbind(model_results, data.frame(
+  Model = "Logistic tuned",
+  Accuracy = accuracy,
+  Sensitivity = sensitivity,
+  Specificity = specificity,
+  Precision = precision,
+  F1 = f1
+))
+```
+
+The results of our tuned model from its confusion matrix are added added to the result table for comparison. The accuracy value increased by just around 2% compared to our initial model. The final accuracy is 0.7459514.
+
+```{r block20, echo=FALSE}
+# Print the final results
+tab8 <- kable(model_results, booktabs = TRUE, escape = FALSE, caption = "Model results + tuned model") %>%
+  kable_styling(position = "center", latex_options = c("striped"))
+tab8
+```
+
+Through the variable importance table we gain insight into which variables were used to predict the final result. In our case the presence of high-level game units (dragons, elite monsters) on the battlefield can change the outcome of the game strongly. Also the importance of blueFirstBlood (meaning a more aggressive, attacking style of the blue player) can help winning the game.
+
+```{r block21, echo=FALSE}
+# Get variable importance
+var_imp <- varImp(logistic_model_tuned, scale = TRUE)$importance 
+
+# Convert to data.frame, sort and filter out 0 values
+var_imp_df <- as.data.frame(var_imp) %>% 
+  arrange(desc(Overall)) %>% 
+  filter(Overall > 0)
+
+tab9 <- kable(var_imp_df, booktabs = TRUE, escape = FALSE, 
+              caption = "Variable Importance") %>%
+  kable_styling(position = "center", latex_options = c("striped"))
+tab9
+```
+
+# Results and conclusion
+
+By testing four different models to create a machine learning algorithm to predict the value of "blueWins" we achieved the best results with Logistic regression - the probability to correctly predict the win for the blue team lies at around 75%. The accuracy of the model can further be increased by increasing the number of observation in our dataset (e.g. a larger dataset with several millions observations) or increasing the number of variables from late game - currently only the first 10 minutes of each game were captured in our training dataset.
+
+Additional model training runs were conducted (but are not covered in this report) by adjusting the number of variables for all models, such as: - elimination of the "connected" columns identified in our EDA earlier (Accuracy LR: 0.7439271) - reducing the features to blueWins, blueExperienceDiff and blueGoldDiff (Accuracy LR: 0.7317814) - Reducing the features to the 3 above + compound features (blueKDA + blueKillParticipation) (Accuracy LR: 0.7327935)
+
+The only option to (very slightly) increase the accuracy of the models was to train them on a dataset with only "blue" columns (Accuracy LR: 0.7469636). The improvements weren not substantial enough to be detailed further in this report.
+
+Future work to improve the predictive accuracy and precision may include evaluation of other machine learning algorithms, such as XGBoost (Extreme Gradient Boosting) and LightGBM (Light Gradient Boosting Machine).
